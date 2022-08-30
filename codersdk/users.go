@@ -83,6 +83,11 @@ type CreateUserRequest struct {
 	OrganizationID uuid.UUID `json:"organization_id" validate:"required"`
 }
 
+type UpdateUserRequest struct {
+	Email    string `json:"email" validate:"required,email"`
+	Username string `json:"username" validate:"required,username"`
+}
+
 type UpdateUserProfileRequest struct {
 	Username string `json:"username" validate:"required,username"`
 }
@@ -221,6 +226,20 @@ func (c *Client) CreateUser(ctx context.Context, req CreateUserRequest) (User, e
 	}
 	var user User
 	return user, json.NewDecoder(res.Body).Decode(&user)
+}
+
+// UpdateUser enables callers to update user information
+func (c *Client) UpdateUser(ctx context.Context, user string, req UpdateUserRequest) (User, error) {
+	res, err := c.Request(ctx, http.MethodPut, fmt.Sprintf("/api/v2/users/%s", user), req)
+	if err != nil {
+		return User{}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return User{}, readBodyAsError(res)
+	}
+	var resp User
+	return resp, json.NewDecoder(res.Body).Decode(&resp)
 }
 
 // UpdateUserProfile enables callers to update profile information

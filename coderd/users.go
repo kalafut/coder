@@ -414,6 +414,98 @@ func (api *API) putUserProfile(rw http.ResponseWriter, r *http.Request) {
 
 	httpapi.Write(rw, http.StatusOK, convertUser(updatedUserProfile, organizationIDs))
 }
+func (api *API) putUser(rw http.ResponseWriter, r *http.Request) {
+	user := httpmw.UserParam(r)
+
+	if !api.Authorize(r, rbac.ActionUpdate, rbac.ResourceUser) {
+		httpapi.ResourceNotFound(rw)
+		return
+	}
+
+	var params codersdk.UpdateUserRequest
+	if !httpapi.Read(rw, r, &params) {
+		return
+	}
+
+	// Check if the username is already in use. This requires checking by email and username
+	// individually since the query may return the existing user for one of the parameters but
+	// not the other.
+	queries := []database.GetUserByEmailOrUsernameParams{
+		{Username: params.Username},
+		{Email: params.Email},
+	}
+
+	var usernameConflict, emailConflict bool
+
+	for _, query := range queries {
+		existentUser, err := api.Database.GetUserByEmailOrUsername(r.Context(), query)
+		isDifferentUser := existentUser.ID != user.ID
+
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			httpapi.Write(rw, http.StatusInternalServerError, codersdk.Response{
+				Message: "Internal error fetching user.",
+				Detail:  err.Error(),
+			})
+			return
+		}
+
+		if err == nil && isDifferentUser {
+			if existentUser.Username == params.Username {
+				usernameConflict = true
+			}
+			if existentUser.Email == params.Email {
+				emailConflict = true
+			}
+		}
+	}
+
+	if usernameConflict || emailConflict {
+		responseErrors := []codersdk.ValidationError{}
+		if usernameConflict {
+			responseErrors = append(responseErrors, codersdk.ValidationError{
+				Field:  "username",
+				Detail: "this value is already in use and should be unique",
+			})
+		}
+		if emailConflict {
+			responseErrors = append(responseErrors, codersdk.ValidationError{
+				Field:  "email",
+				Detail: "this value is already in use and should be unique",
+			})
+		}
+		httpapi.Write(rw, http.StatusConflict, codersdk.Response{
+			Message:     "User already exists.",
+			Validations: responseErrors,
+		})
+		return
+	}
+
+	updatedUserProfile, err := api.Database.UpdateUserProfile(r.Context(), database.UpdateUserProfileParams{
+		ID:        user.ID,
+		Email:     params.Email,
+		Username:  params.Username,
+		UpdatedAt: database.Now(),
+	})
+
+	if err != nil {
+		httpapi.Write(rw, http.StatusInternalServerError, codersdk.Response{
+			Message: "Internal error updating user.",
+			Detail:  err.Error(),
+		})
+		return
+	}
+
+	organizationIDs, err := userOrganizationIDs(r.Context(), api, user)
+	if err != nil {
+		httpapi.Write(rw, http.StatusInternalServerError, codersdk.Response{
+			Message: "Internal error fetching user's organizations.",
+			Detail:  err.Error(),
+		})
+		return
+	}
+
+	httpapi.Write(rw, http.StatusOK, convertUser(updatedUserProfile, organizationIDs))
+}
 
 func (api *API) putUserStatus(status database.UserStatus) func(rw http.ResponseWriter, r *http.Request) {
 	return func(rw http.ResponseWriter, r *http.Request) {

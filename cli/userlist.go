@@ -24,6 +24,7 @@ func userList() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:     "list",
+		Short:   "List all users",
 		Aliases: []string{"ls"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := CreateClient(cmd)

@@ -8,7 +8,7 @@ import (
 
 func users() *cobra.Command {
 	cmd := &cobra.Command{
-		Short:   "Create, remove, and list users",
+		Short:   "Create, update, remove, and list users",
 		Use:     "users",
 		Aliases: []string{"user"},
 	}
@@ -16,6 +16,7 @@ func users() *cobra.Command {
 		userCreate(),
 		userList(),
 		userSingle(),
+		userUpdate(),
 		createUserStatusCommand(codersdk.UserStatusActive),
 		createUserStatusCommand(codersdk.UserStatusSuspended),
 	)
